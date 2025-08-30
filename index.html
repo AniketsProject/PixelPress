@@ -532,7 +532,7 @@
             const url = imageUrlInput.value.trim();
             if (!url) { alert('Please enter an image URL.'); return; }
             
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const proxyUrl = \/api/proxy?url=${encodeURIComponent(url)}`;`
             
             try {
                 const response = await fetch(proxyUrl);
