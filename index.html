@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Image Compression Webapp</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Configure Tailwind CSS to use the 'class' strategy for dark mode
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Image Compare Viewer Library -->
+    <link rel="stylesheet" href="https://unpkg.com/img-comparison-slider@8/dist/themes/fluid.css" />
+    <script src="https://unpkg.com/img-comparison-slider@8/dist/index.js"></script>
+    <!-- Cropper.js Library -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    <!-- JSZip Library for Zipping Files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        // Set theme on initial load
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Hide number input spinners */
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+        .loader {
+            border: 3px solid rgba(156, 163, 175, 0.3); /* gray-400 with opacity */
+            border-top: 3px solid #4f46e5; /* indigo-600 */
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        .dark .loader {
+            border-top-color: #818cf8; /* indigo-400 */
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Custom styles for the comparison slider */
+        .comparison-container {
+            --divider-width: 3px;
+            --divider-color: #4f46e5;
+            --default-handle-opacity: 0.9;
+            --default-handle-color: #4f46e5;
+            --default-handle-width: 42px;
+            --default-handle-height: 42px;
+            --default-handle-border-radius: 50%;
+        }
+        /* Custom range slider styles */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+            width: 100%;
+        }
+        input[type="range"]:focus {
+            outline: none;
+        }
+        /* Track */
+        input[type="range"]::-webkit-slider-runnable-track {
+            background-color: #e5e7eb; /* gray-200 */
+            border-radius: 0.5rem;
+            height: 0.5rem;
+        }
+        .dark input[type="range"]::-webkit-slider-runnable-track {
+             background-color: #4b5563; /* gray-600 */
+        }
+        /* Thumb */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            margin-top: -6px; /* Centered thumb */
+            background-color: #4f46e5; /* indigo-600 */
+            border-radius: 50%;
+            height: 1.25rem;
+            width: 1.25rem;
+            border: 2px solid white;
+        }
+         .dark input[type="range"]::-webkit-slider-thumb {
+            border-color: #1f2937; /* gray-800 */
+        }
+        /* Drag and Drop styles */
+        .drag-over {
+            outline-style: dashed !important;
+            outline-color: #4f46e5 !important;
+            background-color: #f0f4ff;
+        }
+        .dark .drag-over {
+            background-color: rgba(79, 70, 229, 0.1);
+        }
+        /* Custom Scrollbar */
+        #imageQueueContainer::-webkit-scrollbar,
+        #previewContainer::-webkit-scrollbar {
+            width: 8px;
+        }
+        #imageQueueContainer::-webkit-scrollbar-track,
+        #previewContainer::-webkit-scrollbar-track {
+            background-color: #f1f5f9; /* slate-100 */
+            border-radius: 10px;
+        }
+        .dark #imageQueueContainer::-webkit-scrollbar-track,
+        .dark #previewContainer::-webkit-scrollbar-track {
+            background-color: #334155; /* slate-700 */
+        }
+        #imageQueueContainer::-webkit-scrollbar-thumb,
+        #previewContainer::-webkit-scrollbar-thumb {
+            background-color: #c7d2fe; /* indigo-200 */
+            border-radius: 10px;
+        }
+        .dark #imageQueueContainer::-webkit-scrollbar-thumb,
+        .dark #previewContainer::-webkit-scrollbar-thumb {
+            background-color: #4f46e5; /* indigo-600 */
+        }
+        #imageQueueContainer::-webkit-scrollbar-thumb:hover,
+        #previewContainer::-webkit-scrollbar-thumb:hover {
+            background-color: #a5b4fc; /* indigo-300 */
+        }
+        .dark #imageQueueContainer::-webkit-scrollbar-thumb:hover,
+        .dark #previewContainer::-webkit-scrollbar-thumb:hover {
+            background-color: #6366f1; /* indigo-500 */
+        }
+        /* Cropper.js container */
+        .editor-image-container {
+            height: 45vh; /* Adjust as needed */
+        }
+        .editor-image-container img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .editor-btn-active {
+            background-color: #4f46e5 !important;
+            color: white !important;
+        }
+        .dark .editor-btn-active {
+            background-color: #6366f1 !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 transition-colors duration-300">
+    <div class="container mx-auto px-4 py-8">
+        
+        <header class="flex justify-between items-center mb-8">
+            <div class="text-left">
+                <h1 class="text-3xl sm:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-500">PixelPress</h1>
+                <p class="text-sm sm:text-base text-slate-500 dark:text-slate-400">Powerful, Private Image Compression.</p>
+            </div>
+            <button id="theme-toggle" class="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-slate-900" title="Toggle dark/light mode">
+                <svg id="theme-icon-light" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                <svg id="theme-icon-dark" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+            </button>
+        </header>
+
+        <!-- Top Controls Section -->
+        <div id="drop-zone" class="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg outline-2 outline-transparent transition-all duration-300 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Column 1: Add Images -->
+                <div class="space-y-3">
+                    <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-300">1. Add Images</h2>
+                    <label for="imageInput" class="w-full text-center px-4 py-3 bg-indigo-600 text-white rounded-lg cursor-pointer hover:bg-indigo-700 transition-all duration-300 font-semibold flex items-center justify-center gap-2 shadow-md hover:shadow-lg" title="Click to select images from your device">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>
+                        Select From Device
+                    </label>
+                    <input type="file" id="imageInput" accept="image/*" multiple class="hidden"/>
+                    <div class="relative">
+                        <div class="absolute inset-0 flex items-center"><span class="w-full border-t border-slate-200 dark:border-slate-700"></span></div>
+                        <div class="relative flex justify-center text-xs uppercase"><span class="bg-white dark:bg-slate-800 px-2 text-slate-500 dark:text-slate-400">or drag & drop anywhere</span></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="url" id="imageUrlInput" placeholder="Paste Image URL" class="p-2 block w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <button id="loadImageBtn" class="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-2 px-4 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition duration-300" title="Load image from the pasted URL">Load</button>
+                    </div>
+                </div>
+
+                <!-- Column 2: Output Settings -->
+                <div class="space-y-3">
+                    <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-300">2. Output Settings</h2>
+                    <div id="qualitySection" class="space-y-4">
+                        <label class="block text-sm font-medium text-slate-500 dark:text-slate-400">Quality</label>
+                        <div class="flex items-center justify-around bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+                            <label class="w-1/2 text-center p-2 rounded-md cursor-pointer text-sm font-medium transition-colors has-[:checked]:bg-white has-[:checked]:dark:bg-slate-800 has-[:checked]:shadow" title="Manually adjust compression quality with a slider">
+                                <input type="radio" id="manualQuality" name="lossyMode" value="manual" class="sr-only" checked>
+                                Slider
+                            </label>
+                            <label class="w-1/2 text-center p-2 rounded-md cursor-pointer text-sm font-medium transition-colors has-[:checked]:bg-white has-[:checked]:dark:bg-slate-800 has-[:checked]:shadow" title="Automatically adjust quality to meet a target file size">
+                                <input type="radio" id="targetSize" name="lossyMode" value="target" class="sr-only">
+                                Target Size
+                            </label>
+                        </div>
+                        <div id="qualityControl">
+                            <input type="range" id="qualitySlider" min="0" max="1" step="0.01" value="0.75" title="Adjust compression level">
+                            <div class="text-center mt-2 text-sm text-slate-500 dark:text-slate-400"><span id="qualityValue" class="font-semibold">75%</span></div>
+                        </div>
+                        <div id="targetSizeControl" class="hidden">
+                            <div class="flex items-center gap-2">
+                                <input type="number" id="sizeInput" value="500" class="p-2 block w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" title="Enter target file size">
+                                <select id="sizeUnit" class="rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" title="Select file size unit">
+                                    <option value="KB">KB</option>
+                                    <option value="MB">MB</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                     <div>
+                        <div class="flex justify-between items-center mb-1 relative group">
+                            <label for="formatSelect" class="block text-sm font-medium text-slate-500 dark:text-slate-400">Format</label>
+                            <button class="p-1 rounded-full text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700" title="Learn about Compression Types">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg>
+                            </button>
+                            <!-- Tooltip -->
+                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-slate-800 dark:bg-slate-700 text-white text-xs rounded-lg shadow-lg p-3 z-10">
+                                <h3 class="font-bold mb-1">About Compression Types</h3>
+                                <p class="font-semibold text-slate-300">Lossy (e.g. JPEG)</p>
+                                <p class="mb-2">Best for photos. Makes files much smaller by removing a tiny amount of detail our eyes can't see.</p>
+                                <p class="font-semibold text-slate-300">Lossless (e.g. PNG)</p>
+                                <p>Best for graphics. Reduces file size with 100% perfect quality, but files are larger.</p>
+                                <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-800 dark:bg-slate-700 transform rotate-45 -mb-1"></div>
+                            </div>
+                        </div>
+                        <select id="formatSelect" class="w-full p-2 border border-slate-300 dark:border-slate-600 dark:bg-slate-700 rounded-md focus:border-indigo-500 focus:ring-indigo-500" title="Select the output image format">
+                            <option value="auto" title="Automatically chooses the best format (JPEG for photos, PNG for graphics)">Auto (Recommended)</option>
+                            <option value="image/jpeg" title="Lossy compression: great for photos, creates small file sizes.">JPEG (Lossy)</option>
+                            <option value="image/png" title="Lossless compression: perfect quality, ideal for graphics with text or sharp lines.">PNG (Lossless)</option>
+                            <option value="image/webp" title="Modern lossy format: smaller than JPEG at similar quality, but less browser support.">WebP (Lossy)</option>
+                            <option value="image/webp_lossless" title="Modern lossless format: smaller than PNG with perfect quality, but less browser support.">WebP (Lossless)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Column 3: Dimensions -->
+                <div class="space-y-3">
+                    <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-300">3. Dimensions (Optional)</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="widthInput" class="block text-sm font-medium text-slate-500 dark:text-slate-400">Width (px)</label>
+                            <input type="number" id="widthInput" placeholder="Auto" class="mt-1 p-2 block w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" title="Enter desired width in pixels">
+                        </div>
+                        <div>
+                            <label for="heightInput" class="block text-sm font-medium text-slate-500 dark:text-slate-400">Height (px)</label>
+                            <input type="number" id="heightInput" placeholder="Auto" class="mt-1 p-2 block w-full rounded-md border-slate-300 dark:border-slate-600 dark:bg-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm" title="Enter desired height in pixels">
+                        </div>
+                    </div>
+                    <div class="flex items-center pt-2">
+                        <input type="checkbox" id="aspectRatioCheckbox" class="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500 bg-transparent" checked>
+                        <label for="aspectRatioCheckbox" class="ml-2 block text-sm text-slate-600 dark:text-slate-300" title="Keep original image proportions when resizing">Maintain Aspect Ratio</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Content Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            <!-- Left Panel: Queue -->
+            <div class="lg:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
+                <h2 class="text-lg font-semibold mb-3 text-slate-700 dark:text-slate-300">Processing Queue (<span id="queueCount">0</span>)</h2>
+                <div id="imageQueueContainer" class="space-y-2 max-h-[18rem] overflow-y-auto pr-2 mb-6">
+                    <p class="text-slate-500 dark:text-slate-400 text-sm">No Images Added Yet.</p>
+                </div>
+                <div class="space-y-3">
+                    <button id="compressBtn" class="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 transition-all duration-300 flex items-center justify-center gap-2 disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed shadow-md hover:shadow-lg disabled:shadow-none" disabled title="Compress all pending images in the queue">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        Compress
+                    </button>
+                    <button id="downloadSelectedBtn" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-all duration-300 flex items-center justify-center gap-2 disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed shadow-md hover:shadow-lg disabled:shadow-none mt-4" disabled title="Download the currently selected compressed image">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Download
+                    </button>
+                    <button id="downloadAllBtn" class="w-full bg-teal-800 text-white font-bold py-3 px-6 rounded-lg hover:bg-teal-900 transition-all duration-300 flex items-center justify-center gap-2 disabled:bg-slate-400 dark:disabled:bg-slate-600 disabled:cursor-not-allowed shadow-md hover:shadow-lg disabled:shadow-none" disabled title="Download all compressed images as a single .zip file">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Download All (.zip)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Panel: Preview -->
+            <div class="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-300">Preview</h2>
+                    <button id="editPreviewBtn" class="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled title="Open the Image Editor">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>
+                        Edit Image
+                    </button>
+                </div>
+                 <div id="previewContainer" class="relative rounded-lg min-h-[20rem] max-h-[70vh] flex items-center justify-center bg-slate-50 dark:bg-slate-800/50 transition-all duration-300 overflow-y-auto">
+                    <div id="previewText" class="text-center text-slate-500 dark:text-slate-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        <p class="mt-2 font-semibold">Live Preview</p>
+                        <p class="text-sm">Add an Image to See the Comparison</p>
+                    </div>
+                    <img-comparison-slider id="comparisonSlider" class="hidden w-full h-full comparison-container">
+                        <figure slot="first" class="w-full h-full relative">
+                            <img id="originalPreview" class="w-full h-full object-contain" src="">
+                            <div class="absolute top-2 left-2 text-white text-sm font-semibold px-3 py-1 pointer-events-none [text-shadow:0_1px_3px_rgb(0_0_0_/_0.5)]">Original</div>
+                        </figure>
+                        <figure slot="second" class="w-full h-full relative">
+                            <img id="compressedPreview" class="w-full h-full object-contain" src="">
+                            <div class="absolute top-2 right-2 text-white text-sm font-semibold px-3 py-1 pointer-events-none [text-shadow:0_1px_3px_rgb(0_0_0_/_0.5)]">Compressed</div>
+                        </figure>
+                    </img-comparison-slider>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editor Modal -->
+    <div id="editor-modal" class="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center p-4 z-50 hidden transition-opacity duration-300">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-4xl p-6 transition-transform duration-300 scale-95 flex flex-col">
+            <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                <h2 class="text-xl font-bold">Image Editor</h2>
+                <button id="close-editor-btn" class="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="editor-image-container flex-grow mb-4">
+                <img id="editor-image" src="">
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6 flex-shrink-0">
+                <button id="crop-btn" class="flex items-center justify-center gap-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition-colors" title="Crop Image">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"></path><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"></path></svg>
+                    Crop
+                </button>
+                <button id="rotate-left-btn" class="flex items-center justify-center gap-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition-colors" title="Rotate Left">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 2v6h6M2.66 15.57a10 10 0 1 0 .57-8.38"/></svg>
+                    Rotate Left
+                </button>
+                <button id="rotate-right-btn" class="flex items-center justify-center gap-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition-colors" title="Rotate Right">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/></svg>
+                    Rotate Right
+                </button>
+                <button id="flip-h-btn" class="flex items-center justify-center gap-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition-colors" title="Flip Horizontally">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3m8-18h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3M12 3v18"/></svg>
+                    Flip Horiz
+                </button>
+                <button id="flip-v-btn" class="flex items-center justify-center gap-2 p-2 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-medium transition-colors" title="Flip Vertically">
+                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16v3a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3m-18-8v-3a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3M3 12h18"/></svg>
+                    Flip Vert
+                </button>
+            </div>
+            <div class="flex justify-end gap-3 flex-shrink-0">
+                <button id="cancel-edit-btn" class="py-2 px-4 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-semibold transition-colors" title="Discard changes">Cancel</button>
+                <button id="save-edit-btn" class="py-2 px-4 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-semibold transition-colors shadow-md" title="Apply changes and save image">Apply & Save</button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center py-8 mt-12 border-t border-slate-200 dark:border-slate-800">
+        <div class="max-w-2xl mx-auto px-4">
+            <h3 class="font-semibold text-slate-700 dark:text-slate-300">Your Privacy is Guaranteed.</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                All compression and editing happens directly in your browser. Your images are never uploaded to any server.
+            </p>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-6 font-medium">
+                Project by John Smith
+            </p>
+            <p class="text-xs text-slate-400 dark:text-slate-500 mt-2">
+                &copy; 2025 PixelPress. All Rights Reserved.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // --- DOM Elements ---
+        const dropZone = document.getElementById('drop-zone');
+        const imageInput = document.getElementById('imageInput');
+        const imageUrlInput = document.getElementById('imageUrlInput');
+        const loadImageBtn = document.getElementById('loadImageBtn');
+        const formatSelect = document.getElementById('formatSelect');
+        const qualitySection = document.getElementById('qualitySection');
+        const manualQualityRadio = document.getElementById('manualQuality');
+        const targetSizeRadio = document.getElementById('targetSize');
+        const qualityControl = document.getElementById('qualityControl');
+        const qualitySlider = document.getElementById('qualitySlider');
+        const qualityValue = document.getElementById('qualityValue');
+        const targetSizeControl = document.getElementById('targetSizeControl');
+        const sizeInput = document.getElementById('sizeInput');
+        const sizeUnit = document.getElementById('sizeUnit');
+        const widthInput = document.getElementById('widthInput');
+        const heightInput = document.getElementById('heightInput');
+        const aspectRatioCheckbox = document.getElementById('aspectRatioCheckbox');
+        const compressBtn = document.getElementById('compressBtn');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
+        const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
+        const imageQueueContainer = document.getElementById('imageQueueContainer');
+        const queueCount = document.getElementById('queueCount');
+        const previewContainer = document.getElementById('previewContainer');
+        const previewText = document.getElementById('previewText');
+        const comparisonSlider = document.getElementById('comparisonSlider');
+        const originalPreview = document.getElementById('originalPreview');
+        const compressedPreview = document.getElementById('compressedPreview');
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIconLight = document.getElementById('theme-icon-light');
+        const themeIconDark = document.getElementById('theme-icon-dark');
+        // Editor Modal Elements
+        const editorModal = document.getElementById('editor-modal');
+        const editorImage = document.getElementById('editor-image');
+        const closeEditorBtn = document.getElementById('close-editor-btn');
+        const cancelEditBtn = document.getElementById('cancel-edit-btn');
+        const saveEditBtn = document.getElementById('save-edit-btn');
+        const cropBtn = document.getElementById('crop-btn');
+        const rotateLeftBtn = document.getElementById('rotate-left-btn');
+        const rotateRightBtn = document.getElementById('rotate-right-btn');
+        const flipHBtn = document.getElementById('flip-h-btn');
+        const flipVBtn = document.getElementById('flip-v-btn');
+        const editPreviewBtn = document.getElementById('editPreviewBtn');
+
+        // --- State ---
+        let imageQueue = [];
+        let isProcessing = false;
+        let activePreviewIndex = 0;
+        let editorState = {
+            item: null,
+            cropper: null,
+            scaleH: 1,
+            scaleV: 1,
+            isCropping: false,
+        };
+
+        // --- Theme Toggle ---
+        function updateThemeIcon() {
+            if (document.documentElement.classList.contains('dark')) {
+                themeIconLight.classList.remove('hidden');
+                themeIconDark.classList.add('hidden');
+            } else {
+                themeIconLight.classList.add('hidden');
+                themeIconDark.classList.remove('hidden');
+            }
+        }
+        themeToggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+            updateThemeIcon();
+        });
+        updateThemeIcon();
+
+
+        // --- Event Listeners ---
+        imageInput.addEventListener('change', handleFileSelection);
+        loadImageBtn.addEventListener('click', handleUrlLoad);
+        formatSelect.addEventListener('change', updateOutputSettingsVisibility);
+        document.querySelectorAll('input[name="lossyMode"]').forEach(radio => {
+            radio.addEventListener('change', updateQualityMode);
+        });
+        qualitySlider.addEventListener('input', () => {
+            qualityValue.textContent = `${Math.round(qualitySlider.value * 100)}%`;
+            recompressActiveImage();
+        });
+        sizeInput.addEventListener('input', recompressActiveImage);
+        sizeUnit.addEventListener('change', recompressActiveImage);
+
+        compressBtn.addEventListener('click', processQueue);
+        downloadAllBtn.addEventListener('click', downloadAllAsZip);
+        downloadSelectedBtn.addEventListener('click', () => {
+            if (imageQueue.length > 0 && activePreviewIndex < imageQueue.length) {
+                const item = imageQueue[activePreviewIndex];
+                downloadImage(item.id);
+            }
+        });
+        widthInput.addEventListener('input', handleDimensionChange);
+        heightInput.addEventListener('input', handleDimensionChange);
+        
+        // --- Drag and Drop Listeners ---
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); });
+        });
+        ['dragenter', 'dragover'].forEach(eventName => {
+            document.body.addEventListener(eventName, () => dropZone.classList.add('drag-over'));
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, () => dropZone.classList.remove('drag-over'));
+        });
+        document.body.addEventListener('drop', (e) => {
+            handleDroppedFiles(e.dataTransfer.files);
+        });
+
+        // --- Editor Listeners ---
+        closeEditorBtn.addEventListener('click', closeEditor);
+        cancelEditBtn.addEventListener('click', closeEditor);
+        saveEditBtn.addEventListener('click', saveEditorChanges);
+        rotateLeftBtn.addEventListener('click', () => editorState.cropper?.rotate(-90));
+        rotateRightBtn.addEventListener('click', () => editorState.cropper?.rotate(90));
+        flipHBtn.addEventListener('click', () => {
+            editorState.scaleH *= -1;
+            editorState.cropper?.scaleX(editorState.scaleH);
+        });
+        flipVBtn.addEventListener('click', () => {
+            editorState.scaleV *= -1;
+            editorState.cropper?.scaleY(editorState.scaleV);
+        });
+        cropBtn.addEventListener('click', toggleCropMode);
+        editPreviewBtn.addEventListener('click', () => {
+            if (imageQueue.length > 0 && activePreviewIndex < imageQueue.length) {
+                const item = imageQueue[activePreviewIndex];
+                openEditor(item.id);
+            }
+        });
+
+        // --- Functions ---
+        function handleFileSelection(e) {
+            handleDroppedFiles(e.target.files);
+            imageInput.value = '';
+        }
+
+        function handleDroppedFiles(files) {
+            Array.from(files).forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    addImageToQueue(file);
+                }
+            });
+        }
+
+        async function handleUrlLoad() {
+            const url = imageUrlInput.value.trim();
+            if (!url) { alert('Please enter an image URL.'); return; }
+            
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            
+            try {
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const blob = await response.blob();
+                const fileName = url.substring(url.lastIndexOf('/') + 1) || 'image.jpg';
+                const file = new File([blob], fileName, { type: blob.type });
+                addImageToQueue(file);
+                imageUrlInput.value = '';
+
+            } catch (error) {
+                console.error('Error fetching image from URL:', error);
+                alert('Could not load image from the URL. The public proxy may be temporarily unavailable.');
+            }
+        }
+
+        function addImageToQueue(file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const imageItem = {
+                        file,
+                        id: `image-${Date.now()}-${Math.random()}`,
+                        originalUrl: event.target.result,
+                        width: img.width,
+                        height: img.height,
+                        aspectRatio: img.width / img.height,
+                        status: 'pending',
+                        compressedBlob: null,
+                        originalSize: file.size,
+                        compressedSize: null,
+                    };
+                    imageQueue.push(imageItem);
+                    activePreviewIndex = imageQueue.length - 1;
+                    renderQueue();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function renderQueue() {
+            imageQueueContainer.innerHTML = '';
+            if (imageQueue.length === 0) {
+                imageQueueContainer.innerHTML = '<p class="text-slate-500 dark:text-slate-400 text-sm">No Images Added Yet.</p>';
+            } else {
+                imageQueue.forEach((item, index) => {
+                    const queueElement = createQueueElement(item, index);
+                    imageQueueContainer.appendChild(queueElement);
+                });
+            }
+            queueCount.textContent = imageQueue.length;
+            updatePreview();
+            updateButtonStates();
+        }
+        
+        function createQueueElement(item, index) {
+            const div = document.createElement('div');
+            div.id = item.id;
+            const isSelected = index === activePreviewIndex;
+            div.className = `flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all duration-200 ${isSelected ? 'border-indigo-500 bg-indigo-50 dark:bg-slate-700/50 dark:border-indigo-500 shadow' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50'}`;
+            div.onclick = () => {
+                activePreviewIndex = index;
+                renderQueue();
+            };
+
+            const originalSizeKB = (item.originalSize / 1024).toFixed(1);
+            let sizeInfo = `${originalSizeKB} KB`;
+            if (item.status === 'done' && item.compressedSize) {
+                const compressedSizeKB = (item.compressedSize / 1024).toFixed(1);
+                const reduction = 100 - (item.compressedSize / item.originalSize * 100);
+                sizeInfo = `<span class="font-semibold text-green-600 dark:text-green-400">${compressedSizeKB} KB</span> <span class="text-xs text-slate-500">(${reduction.toFixed(0)}% smaller)</span>`;
+            }
+
+            div.innerHTML = `
+                <div class="flex items-center gap-3 overflow-hidden">
+                    <img src="${item.originalUrl}" class="w-10 h-10 object-cover rounded-md flex-shrink-0">
+                    <div class="text-sm overflow-hidden">
+                        <p class="font-medium truncate text-slate-700 dark:text-slate-300">${item.file.name}</p>
+                        <p class="text-slate-500 dark:text-slate-400">${sizeInfo}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 ml-2 flex-shrink-0">
+                    <button class="p-1 rounded-full hover:bg-slate-200 dark:hover:bg-slate-600" onclick="event.stopPropagation(); removeImageFromQueue('${item.id}')">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg>
+                    </button>
+                    <div class="status-indicator">
+                        ${getStatusIndicator(item)}
+                    </div>
+                </div>
+            `;
+            return div;
+        }
+
+        function getStatusIndicator(item) {
+            switch(item.status) {
+                case 'pending': return `<span class="text-xs font-semibold text-slate-500" title="Pending Compression">Pending</span>`;
+                case 'processing': return `<div class="loader"></div>`;
+                case 'done': return `<div class="flex items-center gap-1 text-indigo-600 dark:text-indigo-400" title="Completed"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg><span class="text-xs font-semibold">Done</span></div>`;
+                case 'error': return `<span class="text-xs font-semibold text-red-500">Error</span>`;
+                default: return '';
+            }
+        }
+
+        function updatePreview() {
+            if (imageQueue.length === 0 || activePreviewIndex >= imageQueue.length) {
+                previewText.style.display = 'block';
+                comparisonSlider.classList.add('hidden');
+                previewContainer.style.aspectRatio = 'auto';
+                editPreviewBtn.disabled = true;
+                return;
+            }
+            
+            previewText.style.display = 'none';
+            comparisonSlider.classList.remove('hidden');
+            editPreviewBtn.disabled = false;
+
+            const item = imageQueue[activePreviewIndex];
+            previewContainer.style.aspectRatio = `${item.width} / ${item.height}`;
+            originalPreview.src = item.originalUrl;
+            compressedPreview.src = item.compressedBlob ? URL.createObjectURL(item.compressedBlob) : item.originalUrl;
+            comparisonSlider.value = 50;
+            updateOutputSettingsVisibility();
+        }
+
+        function updateOutputSettingsVisibility() {
+            const selectedFormat = formatSelect.value;
+            const activeItem = imageQueue[activePreviewIndex];
+            const isLossy = selectedFormat === 'image/jpeg' || selectedFormat === 'image/webp' || (selectedFormat === 'auto' && activeItem && activeItem.file.type.includes('jpeg'));
+
+            if (isLossy) {
+                qualitySection.classList.remove('hidden');
+            } else {
+                qualitySection.classList.add('hidden');
+            }
+        }
+
+        function updateQualityMode() {
+            if (manualQualityRadio.checked) {
+                qualityControl.classList.remove('hidden');
+                targetSizeControl.classList.add('hidden');
+            } else {
+                qualityControl.classList.add('hidden');
+                targetSizeControl.classList.remove('hidden');
+            }
+            recompressActiveImage();
+        }
+        
+        function handleDimensionChange(e) {
+            if (!aspectRatioCheckbox.checked || imageQueue.length === 0) return;
+            
+            const activeInput = e.target;
+            const otherInput = activeInput.id === 'widthInput' ? heightInput : widthInput;
+            const item = imageQueue[activePreviewIndex];
+            if (!item) return;
+
+            const value = parseInt(activeInput.value, 10);
+            if (!isNaN(value) && value > 0) {
+                if (activeInput.id === 'widthInput') {
+                    otherInput.value = Math.round(value / item.aspectRatio);
+                } else {
+                    otherInput.value = Math.round(value * item.aspectRatio);
+                }
+            }
+        }
+        
+        let recompressTimeout;
+        function recompressActiveImage() {
+            clearTimeout(recompressTimeout);
+            recompressTimeout = setTimeout(async () => {
+                const item = imageQueue[activePreviewIndex];
+                if (!item || item.status !== 'done') return;
+                
+                try {
+                    const blob = await compressImage(item);
+                    item.compressedBlob = blob;
+                    item.compressedSize = blob.size;
+                    renderQueue();
+                } catch (err) {
+                    console.error("Re-compression failed:", err);
+                }
+            }, 300); // Debounce to avoid rapid re-compression
+        }
+
+        async function processQueue() {
+            isProcessing = true;
+            renderQueue();
+            
+            for (let i = 0; i < imageQueue.length; i++) {
+                const item = imageQueue[i];
+                if (item.status === 'done') continue;
+                
+                item.status = 'processing';
+                renderQueue();
+
+                try {
+                    const blob = await compressImage(item);
+                    item.compressedBlob = blob;
+                    item.compressedSize = blob.size;
+                    item.status = 'done';
+                } catch (err) {
+                    console.error("Compression failed for", item.file.name, err);
+                    item.status = 'error';
+                }
+                renderQueue();
+            }
+            
+            isProcessing = false;
+            renderQueue();
+        }
+
+        async function compressImage(item) {
+            const canvas = await createImageCanvas(item);
+            let format = formatSelect.value;
+
+            if (format === 'auto') {
+                format = item.file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+            }
+
+            if (format === 'image/png' || format === 'image/webp_lossless') {
+                const finalMimeType = format === 'image/webp_lossless' ? 'image/webp' : 'image/png';
+                return getBlob(canvas, finalMimeType, 1.0);
+            }
+
+            // Handle lossy formats
+            const lossyMode = document.querySelector('input[name="lossyMode"]:checked').value;
+            const mimeType = format;
+            if (lossyMode === 'manual') {
+                const quality = parseFloat(qualitySlider.value);
+                return getBlob(canvas, mimeType, quality);
+            } else { // Target Size
+                const targetSizeValue = parseFloat(sizeInput.value);
+                const targetSizeUnit = sizeUnit.value;
+                const targetBytes = targetSizeUnit === 'MB' ? targetSizeValue * 1024 * 1024 : targetSizeValue * 1024;
+                const finalBlob = await compressToTargetSize(canvas, mimeType, targetBytes);
+                if (!finalBlob) throw new Error("Could not compress to target size. Try a larger size.");
+                return finalBlob;
+            }
+        }
+
+        function createImageCanvas(item) {
+             return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const targetWidth = parseInt(widthInput.value, 10) || img.width;
+                    const targetHeight = parseInt(heightInput.value, 10) || img.height;
+                    canvas.width = targetWidth;
+                    canvas.height = targetHeight;
+                    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                    resolve(canvas);
+                };
+                img.onerror = reject;
+                img.src = item.originalUrl;
+            });
+        }
+
+        function getBlob(canvas, mimeType, quality) {
+            return new Promise((resolve, reject) => {
+                canvas.toBlob(blob => {
+                    if (blob) resolve(blob);
+                    else reject(new Error('Canvas toBlob failed.'));
+                }, mimeType, quality);
+            });
+        }
+
+        async function compressToTargetSize(canvas, mimeType, targetBytes, tolerance = 0.05) {
+            let minQuality = 0;
+            let maxQuality = 1;
+            let bestBlob = null;
+
+            for (let i = 0; i < 8; i++) {
+                const quality = (minQuality + maxQuality) / 2;
+                const blob = await getBlob(canvas, mimeType, quality);
+                
+                if (Math.abs(blob.size - targetBytes) <= targetBytes * tolerance) return blob;
+
+                if (blob.size > targetBytes) {
+                    maxQuality = quality;
+                } else {
+                    minQuality = quality;
+                    bestBlob = blob;
+                }
+            }
+            if (!bestBlob) {
+                bestBlob = await getBlob(canvas, mimeType, 0);
+                if (bestBlob.size > targetBytes) return null;
+            }
+            return bestBlob;
+        }
+
+        // --- Editor Functions ---
+        window.openEditor = (itemId) => {
+            const item = imageQueue.find(i => i.id === itemId);
+            if (!item) return;
+
+            editorState.item = item;
+            editorImage.src = item.originalUrl;
+            
+            editorModal.classList.remove('hidden');
+            setTimeout(() => {
+                editorModal.firstElementChild.classList.remove('scale-95');
+                editorState.cropper = new Cropper(editorImage, {
+                    viewMode: 1,
+                    background: false,
+                    autoCrop: false,
+                    dragMode: 'move',
+                });
+            }, 10);
+        }
+
+        function closeEditor() {
+            editorModal.firstElementChild.classList.add('scale-95');
+            setTimeout(() => {
+                editorModal.classList.add('hidden');
+                editorState.cropper?.destroy();
+                editorState.cropper = null;
+                editorState.isCropping = false;
+                cropBtn.classList.remove('editor-btn-active');
+            }, 300);
+        }
+        
+        function toggleCropMode() {
+            if (!editorState.cropper) return;
+            editorState.isCropping = !editorState.isCropping;
+            if (editorState.isCropping) {
+                editorState.cropper.crop();
+                editorState.cropper.setDragMode('crop');
+                cropBtn.classList.add('editor-btn-active');
+            } else {
+                editorState.cropper.clear();
+                editorState.cropper.setDragMode('move');
+                cropBtn.classList.remove('editor-btn-active');
+            }
+        }
+
+        function saveEditorChanges() {
+            const { item, cropper } = editorState;
+            if (!item || !cropper) return;
+            
+            const canvas = cropper.getCroppedCanvas();
+            canvas.toBlob(async (blob) => {
+                const newFile = new File([blob], item.file.name, { type: blob.type });
+                const newUrl = URL.createObjectURL(blob);
+                
+                URL.revokeObjectURL(item.originalUrl);
+
+                item.file = newFile;
+                item.originalUrl = newUrl;
+                item.originalSize = blob.size;
+                item.width = canvas.width;
+                item.height = canvas.height;
+                item.aspectRatio = canvas.width / canvas.height;
+
+                item.status = 'pending';
+                item.compressedBlob = null;
+                item.compressedSize = null;
+
+                renderQueue();
+                closeEditor();
+            }, 'image/png');
+        }
+        
+        window.downloadImage = (itemId) => {
+            const item = imageQueue.find(i => i.id === itemId);
+            if (item && item.compressedBlob) {
+                const url = URL.createObjectURL(item.compressedBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                const nameParts = item.file.name.split('.');
+                const extension = item.compressedBlob.type.split('/')[1];
+                nameParts.pop();
+                a.download = `${nameParts.join('.')}-compressed.${extension}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        };
+        
+        window.removeImageFromQueue = (itemId) => {
+            const indexToRemove = imageQueue.findIndex(i => i.id === itemId);
+            if (indexToRemove === -1) return;
+
+            const itemToRemove = imageQueue[indexToRemove];
+            URL.revokeObjectURL(itemToRemove.originalUrl);
+            if (itemToRemove.compressedBlob) {
+                URL.revokeObjectURL(URL.createObjectURL(itemToRemove.compressedBlob));
+            }
+
+            imageQueue.splice(indexToRemove, 1);
+
+            if (activePreviewIndex >= indexToRemove) {
+                activePreviewIndex = Math.max(0, activePreviewIndex - 1);
+            }
+            
+            if (imageQueue.length === 0) {
+                activePreviewIndex = 0;
+            }
+
+            renderQueue();
+        };
+        
+        function updateButtonStates() {
+            const anyPending = imageQueue.some(item => item.status === 'pending');
+            const allDone = imageQueue.length > 0 && imageQueue.every(item => item.status === 'done');
+            const selectedDone = imageQueue[activePreviewIndex] && imageQueue[activePreviewIndex].status === 'done';
+
+            compressBtn.disabled = !anyPending || isProcessing;
+            downloadSelectedBtn.disabled = !selectedDone || isProcessing;
+            downloadAllBtn.disabled = !allDone || isProcessing || imageQueue.length < 2;
+        }
+
+        async function downloadAllAsZip() {
+            const zip = new JSZip();
+            imageQueue.forEach(item => {
+                if (item.compressedBlob) {
+                    const nameParts = item.file.name.split('.');
+                    const extension = item.compressedBlob.type.split('/')[1];
+                    nameParts.pop();
+                    const fileName = `${nameParts.join('.')}-compressed.${extension}`;
+                    zip.file(fileName, item.compressedBlob);
+                }
+            });
+
+            zip.generateAsync({ type: "blob" }).then(content => {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(content);
+                a.download = "compressed_images.zip";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            });
+        }
+
+        // --- Initial Render ---
+        renderQueue();
+        updateOutputSettingsVisibility();
+        updateQualityMode();
+    </script>
+</body>
+</html>
